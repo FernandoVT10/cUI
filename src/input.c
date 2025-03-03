@@ -3,6 +3,7 @@
 #include "input.h"
 
 #define FONT_SPACING 2
+#define CURSOR_BLINK_RATE 0.5 // time for the cursor to show and hide in seconds
 
 // similar to DrawTextEx from raylib
 static void draw_string(
@@ -167,7 +168,7 @@ static void update_cursor(Input *input)
 
     input->cursor.draw_pos = (Vector2) {
         .x = input->pos.x + input->padding.left + text_size.x - input->scroll,
-        .y = input->pos.y + input->padding.top,
+        .y = input->pos.y + input->padding.top - 1,
     };
 }
 
@@ -218,12 +219,11 @@ static void draw_cursor(Input *input)
     InputCursor *cursor = &input->cursor;
     cursor->blink_t += GetFrameTime();
 
-    // TODO: magic numbers!
-    if(cursor->blink_t > 1) {
+    if(cursor->blink_t > CURSOR_BLINK_RATE * 2) {
         cursor->blink_t = 0;
     }
 
-    if(cursor->blink_t < 0.5) {
+    if(cursor->blink_t < CURSOR_BLINK_RATE) {
         DrawRectangleV(cursor->draw_pos, get_cursor_size(input), input->font_color);
     }
 }
