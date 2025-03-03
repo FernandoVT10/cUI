@@ -133,6 +133,21 @@ static void handle_editing(Input *input)
     // }
 }
 
+static void update_scroll(Input *input, float text_width)
+{
+    float pos_x = text_width - input->scroll;
+    // this variable refers to the visible rectangle of the input
+    // and that visible rectangle is the size of the input minus its left and right paddings
+    float input_size = input->size.x - input->padding.left - input->padding.right;
+
+    if(pos_x > input_size) {
+        input->scroll += pos_x - input_size;
+    } else if(pos_x < 0) {
+        // NOTE: here the scroll variable is being substracted
+        input->scroll += pos_x;
+    }
+}
+
 static void update_cursor(Input *input)
 {
     if(!input->focused) return;
@@ -144,19 +159,16 @@ static void update_cursor(Input *input)
         set_cursor_pos(&input->cursor, input->cursor.pos - 1);
     }
 
-    Vector2 slice_size = measure_string_slice(
+    Vector2 text_size = measure_string_slice(
         &input->text, input->font, input->font_size, FONT_SPACING, input->cursor.pos
     );
 
+    update_scroll(input, text_size.x);
+
     input->cursor.draw_pos = (Vector2) {
-        .x = input->pos.x + slice_size.x + input->padding.left,
+        .x = input->pos.x + input->padding.left + text_size.x - input->scroll,
         .y = input->pos.y + input->padding.top,
     };
-
-    if(input->cursor.draw_pos.x - input->scroll > input->pos.x + input->size.x - input->padding.left) {
-        input->scroll = -(input->pos.x + input->size.x - input->padding.left - input->cursor.draw_pos.x);
-        input->cursor.draw_pos.x -= input->scroll;
-    }
 }
 
 static Vector2 get_cursor_size(Input *input)
