@@ -2,6 +2,7 @@
 
 #include "raylib.h"
 #include "input.h"
+#include "keysManager.h"
 
 #define COLOR_BG CLITERAL(Color) { 22, 20, 31, 255 }
 
@@ -31,6 +32,7 @@ int main(void)
     while(!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(COLOR_BG);
+        keys_manager_update();
         handle_input(&input);
         EndDrawing();
     }

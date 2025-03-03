@@ -1,6 +1,7 @@
 #include <ctype.h>
 
 #include "input.h"
+#include "keysManager.h"
 
 #define FONT_SPACING 2
 
@@ -76,7 +77,7 @@ static void set_cursor_pos(InputCursor *cursor, size_t pos)
     cursor->blink_t = 0;
 }
 
-static bool ctrl_is_down()
+static bool is_ctrl_down()
 {
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 }
@@ -91,8 +92,9 @@ static void handle_editing(Input *input)
         set_cursor_pos(&input->cursor, input->cursor.pos + 1);
     }
 
-    // TODO: handle reapeating the key when it's pressed
-    if(ctrl_is_down() && IsKeyPressed(KEY_BACKSPACE) && input->cursor.pos > 0) {
+    bool is_backspace_active = is_repeating_key_active(KEYSM_BACKSPACE);
+
+    if(is_ctrl_down() && is_backspace_active && input->cursor.pos > 0) {
         char cur_chr = input->text.items[input->cursor.pos - 1];
 
         if(!isalnum(cur_chr)) {
@@ -109,7 +111,7 @@ static void handle_editing(Input *input)
                 }
             }
         }
-    } else if(input->cursor.pos > 0 && IsKeyPressed(KEY_BACKSPACE)) {
+    } else if(input->cursor.pos > 0 && is_backspace_active) {
         string_remove_chr(&input->text, input->cursor.pos - 1);
         set_cursor_pos(&input->cursor, input->cursor.pos - 1);
     }
@@ -152,10 +154,9 @@ static void update_cursor(Input *input)
 {
     if(!input->focused) return;
 
-    // TODO: handle reapeating the key when it's pressed
-    if(IsKeyPressed(KEY_RIGHT) && input->cursor.pos < input->text.count) {
+    if(is_repeating_key_active(KEYSM_RIGHT_ARROW) && input->cursor.pos < input->text.count) {
         set_cursor_pos(&input->cursor, input->cursor.pos + 1);
-    } else if(IsKeyPressed(KEY_LEFT) && input->cursor.pos > 0) {
+    } else if(is_repeating_key_active(KEYSM_LEFT_ARROW) && input->cursor.pos > 0) {
         set_cursor_pos(&input->cursor, input->cursor.pos - 1);
     }
 
