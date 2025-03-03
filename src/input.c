@@ -1,7 +1,6 @@
 #include <ctype.h>
 
 #include "input.h"
-#include "keysManager.h"
 
 #define FONT_SPACING 2
 
@@ -92,7 +91,7 @@ static void handle_editing(Input *input)
         set_cursor_pos(&input->cursor, input->cursor.pos + 1);
     }
 
-    bool is_backspace_active = is_repeating_key_active(KEYSM_BACKSPACE);
+    bool is_backspace_active = IsKeyPressedRepeat(KEY_BACKSPACE) || IsKeyPressed(KEY_BACKSPACE);
 
     if(is_ctrl_down() && is_backspace_active && input->cursor.pos > 0) {
         char cur_chr = input->text.items[input->cursor.pos - 1];
@@ -154,9 +153,9 @@ static void update_cursor(Input *input)
 {
     if(!input->focused) return;
 
-    if(is_repeating_key_active(KEYSM_RIGHT_ARROW) && input->cursor.pos < input->text.count) {
+    if((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && input->cursor.pos < input->text.count) {
         set_cursor_pos(&input->cursor, input->cursor.pos + 1);
-    } else if(is_repeating_key_active(KEYSM_LEFT_ARROW) && input->cursor.pos > 0) {
+    } else if((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && input->cursor.pos > 0) {
         set_cursor_pos(&input->cursor, input->cursor.pos - 1);
     }
 
