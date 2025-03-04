@@ -189,9 +189,8 @@ static void handle_clipboard(Input *input)
 static void update_scroll(Input *input, float text_width)
 {
     float pos_x = text_width - input->scroll;
-    // this variable refers to the visible rectangle of the input
-    // and that visible rectangle is the size of the input minus its left and right paddings
-    float input_size = input->size.x - input->padding.left - input->padding.right;
+    InputBox input_box = get_input_visible_box(input);
+    float input_size = input_box.right - input_box.left;
 
     if(pos_x > input_size) {
         input->scroll += pos_x - input_size;
@@ -217,9 +216,10 @@ static void update_cursor(Input *input)
 
     update_scroll(input, text_size.x);
 
+    InputBox input_box = get_input_visible_box(input);
     input->cursor.draw_pos = (Vector2) {
-        .x = input->pos.x + input->padding.left + text_size.x - input->scroll,
-        .y = input->pos.y + input->padding.top - 1,
+        .x = input_box.left + text_size.x - input->scroll,
+        .y = input_box.top - 1,
     };
 }
 
@@ -235,16 +235,17 @@ static void draw_input(Input *input)
 {
     DrawRectangleV(input->pos, input->size, input->bg_color);
 
+    InputBox input_box = get_input_visible_box(input);
     BeginScissorMode(
-        input->pos.x + input->padding.left,
-        input->pos.y + input->padding.top,
-        input->size.x - input->padding.left - input->padding.right,
-        input->size.y - input->padding.top - input->padding.bottom
+        input_box.left,
+        input_box.top,
+        input_box.right - input_box.left,
+        input_box.bottom - input_box.top
     );
 
     Vector2 text_pos = {
-        .x = input->pos.x + input->padding.left - input->scroll,
-        .y = input->pos.y + input->padding.top
+        .x = input_box.left - input->scroll,
+        .y = input_box.top,
     };
 
     draw_string(
