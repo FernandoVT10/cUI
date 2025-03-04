@@ -86,6 +86,8 @@ static void handle_mouse(Input *input)
 
     if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && input->hovered) {
         input->focused = true;
+        // reset cursor's blinking
+        input->cursor.blink_t = 0;
     } else if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !input->hovered) {
         input->focused = false;
     }
