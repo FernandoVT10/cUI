@@ -94,33 +94,33 @@ static void handle_mouse(Input *input)
 
     InputBox input_box = get_input_visible_box(input);
 
-    if(!input->hovered
-        || !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)
-        || !(mouse_pos.y > input_box.top && mouse_pos.y < input_box.top + input->font_size)
-    ) {
-        return;
-    }
+    if(input->hovered
+        && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)
+        && (mouse_pos.y > input_box.top && mouse_pos.y < input_box.top + input->font_size)) {
 
-    char s[2];
-
-    float text_width = 0;
-
-    for(size_t i = 0; i < input->text.count; i++) {
-        s[0] = input->text.items[i];
+        // helper string for measuring the letters with raylib
+        char s[2];
         s[1] = '\0';
+        float chr_pos = 0;
 
-        text_width += MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
+        for(size_t i = 0; i < input->text.count; i++) {
+            s[0] = input->text.items[i];
 
-        if(text_width > mouse_pos.x - input_box.left) {
-            set_cursor_pos(&input->cursor, i);
-            break;
+            chr_pos += MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
+
+            if(chr_pos > mouse_pos.x - input_box.left) {
+                set_cursor_pos(&input->cursor, i);
+                break;
+            }
+
+            // between characters an additional width (font spacing) is added
+            if(i > 0) chr_pos += FONT_SPACING;
         }
 
-        if(i > 0) text_width += FONT_SPACING;
-    }
-
-    if(mouse_pos.x - input_box.left > text_width) {
-        set_cursor_pos(&input->cursor, input->text.count);
+        // if the mouse position exceeds last char position, we set the cursor to the last position
+        if(mouse_pos.x - input_box.left > chr_pos) {
+            set_cursor_pos(&input->cursor, input->text.count);
+        }
     }
 }
 
