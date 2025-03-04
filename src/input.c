@@ -115,24 +115,30 @@ static void handle_editing(Input *input)
         string_remove_chr(&input->text, input->cursor.pos - 1);
         set_cursor_pos(&input->cursor, input->cursor.pos - 1);
     }
+}
 
-    // if(ctrl_is_down() && IsKeyPressed(KEY_V)) {
-    //     const char *raw = GetClipboardText();
-    //     char *text = malloc(strlen(raw) + 1);
-    //     size_t i = 0;
-    //
-    //     // removes new lines from pasted text
-    //     for(size_t j = 0; j <= strlen(raw); j++) {
-    //         if(raw[j] != '\n') {
-    //             text[i++] = raw[j];
-    //         }
-    //     }
-    //
-    //     string_insert_text(&input->text, text, input->cursor.pos);
-    //     input_update_cursor_pos(input, input->cursor.pos + strlen(text));
-    //
-    //     free(text);
-    // }
+static void handle_clipboard(Input *input)
+{
+    if(is_ctrl_down() && IsKeyPressed(KEY_V)) {
+        const char *raw = GetClipboardText();
+
+        if(strlen(raw) > 0) {
+            char *formatted_text = malloc(strlen(raw) + 1);
+            size_t i = 0;
+
+            // removes new lines from pasted text
+            for(size_t j = 0; j <= strlen(raw); j++) {
+                if(raw[j] != '\n') {
+                    formatted_text[i++] = raw[j];
+                }
+            }
+
+            string_insert_text(&input->text, formatted_text, input->cursor.pos);
+            set_cursor_pos(&input->cursor, input->cursor.pos + strlen(formatted_text));
+
+            free(formatted_text);
+        }
+    }
 }
 
 static void update_scroll(Input *input, float text_width)
@@ -232,6 +238,7 @@ void handle_input(Input *input)
 {
     handle_mouse(input);
     handle_editing(input);
+    handle_clipboard(input);
     update_cursor(input);
     draw_input(input);
     draw_cursor(input);
