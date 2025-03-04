@@ -51,30 +51,75 @@ static Vector2 measure_string_slice(
     return size;
 }
 
-static Rectangle get_input_rect(Input *input)
+typedef struct {
+    float left;
+    float right;
+    float top;
+    float bottom;
+} InputBox;
+
+// creates a bounding box of the insides of the input
+static InputBox get_input_visible_box(Input *input)
 {
-    return (Rectangle) {
-        input->pos.x, input->pos.y,
-        input->size.x, input->size.y,
+    return (InputBox) {
+        .left = input->pos.x + input->padding.left,
+        .right = input->pos.x + input->size.x - input->padding.right,
+        .top = input->pos.y + input->padding.top,
+        .bottom = input->pos.y + input->size.y - input->padding.bottom,
     };
-}
-
-static void handle_mouse(Input *input)
-{
-    Vector2 mouse_pos = GetMousePosition();
-    input->hovered = CheckCollisionPointRec(mouse_pos, get_input_rect(input));
-
-    if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && input->hovered) {
-        input->focused = true;
-    } else if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !input->hovered) {
-        input->focused = false;
-    }
 }
 
 static void set_cursor_pos(InputCursor *cursor, size_t pos)
 {
     cursor->pos = pos;
     cursor->blink_t = 0;
+}
+
+static void handle_mouse(Input *input)
+{
+    Vector2 mouse_pos = GetMousePosition();
+    Rectangle input_rect =  {
+        input->pos.x, input->pos.y,
+        input->size.x, input->size.y,
+    };
+    input->hovered = CheckCollisionPointRec(mouse_pos, input_rect);
+
+    if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && input->hovered) {
+        input->focused = true;
+    } else if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !input->hovered) {
+        input->focused = false;
+    }
+
+    InputBox input_box = get_input_visible_box(input);
+
+    if(!input->hovered
+        || !IsMouseButtonReleased(MOUSE_BUTTON_LEFT)
+        || !(mouse_pos.y > input_box.top && mouse_pos.y < input_box.top + input->font_size)
+    ) {
+        return;
+    }
+
+    char s[2];
+
+    float text_width = 0;
+
+    for(size_t i = 0; i < input->text.count; i++) {
+        s[0] = input->text.items[i];
+        s[1] = '\0';
+
+        text_width += MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
+
+        if(text_width > mouse_pos.x - input_box.left) {
+            set_cursor_pos(&input->cursor, i);
+            break;
+        }
+
+        if(i > 0) text_width += FONT_SPACING;
+    }
+
+    if(mouse_pos.x - input_box.left > text_width) {
+        set_cursor_pos(&input->cursor, input->text.count);
+    }
 }
 
 static bool is_ctrl_down()
@@ -214,7 +259,11 @@ static void draw_input(Input *input)
 
     if(input->focused) {
         int border_size = 2;
-        DrawRectangleLinesEx(get_input_rect(input), border_size, input->border_color);
+        Rectangle input_rect =  {
+            input->pos.x, input->pos.y,
+            input->size.x, input->size.y,
+        };
+        DrawRectangleLinesEx(input_rect, border_size, input->border_color);
     }
 }
 
