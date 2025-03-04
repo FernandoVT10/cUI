@@ -5,6 +5,24 @@
 #define FONT_SPACING 2
 #define CURSOR_BLINK_RATE 0.5 // time for the cursor to show and hide in seconds
 
+Input *create_input(InputProps props)
+{
+    Input *input = malloc(sizeof(Input));
+    bzero(input, sizeof(Input));
+
+    input->pos = props.pos;
+    input->size = props.size;
+    input->font = props.font;
+    input->font_size = props.font_size;
+    input->font_color = props.font_color;
+    input->placeholder = props.placeholder;
+    input->padding = props.padding;
+    input->border_color = props.border_color;
+    input->bg_color = props.bg_color;
+
+    return input;
+}
+
 // similar to DrawTextEx from raylib
 static void draw_string(
     Font font,
@@ -250,14 +268,26 @@ static void draw_input(Input *input)
         .y = input_box.top,
     };
 
-    draw_string(
-        input->font,
-        &input->text,
-        text_pos,
-        input->font_size,
-        FONT_SPACING,
-        input->font_color
-    );
+    if(input->text.count > 0) {
+        draw_string(
+            input->font,
+            &input->text,
+            text_pos,
+            input->font_size,
+            FONT_SPACING,
+            input->font_color
+        );
+    } else {
+        Color color = ColorAlpha(input->font_color, 0.5);
+        DrawTextEx(
+            input->font,
+            input->placeholder,
+            text_pos,
+            input->font_size,
+            FONT_SPACING,
+            color
+        );
+    }
     EndScissorMode();
 
     if(input->focused) {

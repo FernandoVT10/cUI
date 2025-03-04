@@ -24,7 +24,7 @@ typedef struct {
     Font font;
     int font_size;
     Color font_color;
-    char *placeholder;
+    const char *placeholder;
     Padding padding;
     bool focused;
     bool hovered;
@@ -34,6 +34,19 @@ typedef struct {
     Color bg_color;
 } Input;
 
+typedef struct {
+    Vector2 pos;
+    Vector2 size;
+    Font font;
+    int font_size;
+    Color font_color;
+    const char *placeholder;
+    Padding padding;
+    Color border_color;
+    Color bg_color;
+} InputProps;
+
+Input *create_input(InputProps props);
 void handle_input(Input *input);
 
 #endif // INPUT_H
