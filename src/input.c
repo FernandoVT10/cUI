@@ -317,10 +317,8 @@ static Vector2 get_cursor_size(Input *input)
     };
 }
 
-static void draw_input(Input *input)
+static void draw_input_text(Input *input)
 {
-    DrawRectangleV(input->pos, input->size, input->bg_color);
-
     InputBox input_box = get_input_visible_box(input);
     BeginScissorMode(
         input_box.left,
@@ -366,6 +364,58 @@ static void draw_input(Input *input)
     }
 }
 
+static void draw_selection(Input *input)
+{
+    if(!input->focused) return;
+
+    InputCursor *cursor = &input->cursor;
+    InputBox input_box = get_input_visible_box(input);
+
+    size_t start, end;
+
+    if(cursor->selection.start > cursor->selection.end) {
+        start = cursor->selection.end;
+        end = cursor->selection.start;
+    } else {
+        start = cursor->selection.start;
+        end = cursor->selection.end;
+    }
+
+    float selection_width = measure_string_slice(
+        &input->text,
+        input->font,
+        input->font_size,
+        FONT_SPACING,
+        start,
+        end
+    ).x;
+
+    float start_pos = measure_string_slice(
+        &input->text,
+        input->font,
+        input->font_size,
+        FONT_SPACING,
+        0,
+        start
+    ).x;
+
+    Vector2 pos = {
+        .x = input_box.left + start_pos - input->scroll,
+        .y = input_box.top - 1,
+    };
+
+    // We add a little offset if the selection doesn't start from the first char
+    if(start > 0) {
+        pos.x += FONT_SPACING;
+    }
+
+    Vector2 size = {
+        .x = selection_width,
+        .y = input->font_size + 2,
+    };
+    DrawRectangleV(pos, size, ColorAlpha(input->font_color, 0.4));
+}
+
 static void draw_cursor(Input *input)
 {
     if(!input->focused) return;
@@ -373,65 +423,25 @@ static void draw_cursor(Input *input)
     InputCursor *cursor = &input->cursor;
     InputBox input_box = get_input_visible_box(input);
 
-    if(cursor->is_collapsed) {
-        cursor->blink_t += GetFrameTime();
+    cursor->blink_t += GetFrameTime();
 
-        if(cursor->blink_t > CURSOR_BLINK_RATE * 2) {
-            cursor->blink_t = 0;
-        }
+    if(cursor->blink_t > CURSOR_BLINK_RATE * 2) {
+        cursor->blink_t = 0;
+    }
 
-        if(cursor->blink_t < CURSOR_BLINK_RATE) {
-            float text_width = measure_string_slice(
-                &input->text,
-                input->font,
-                input->font_size,
-                FONT_SPACING,
-                0, input->cursor.pos
-            ).x;
-            Vector2 pos = {
-                .x = input_box.left + text_width - input->scroll,
-                .y = input_box.top - 1,
-            };
-            DrawRectangleV(pos, get_cursor_size(input), input->font_color);
-        }
-    } else {
-        size_t start, end;
-
-        if(cursor->selection.start > cursor->selection.end) {
-            start = cursor->selection.end;
-            end = cursor->selection.start;
-        } else {
-            start = cursor->selection.start;
-            end = cursor->selection.end;
-        }
-
-        float selection_width = measure_string_slice(
+    if(cursor->blink_t < CURSOR_BLINK_RATE) {
+        float text_width = measure_string_slice(
             &input->text,
             input->font,
             input->font_size,
             FONT_SPACING,
-            start,
-            end
+            0, input->cursor.pos
         ).x;
-
-        float start_pos = measure_string_slice(
-            &input->text,
-            input->font,
-            input->font_size,
-            FONT_SPACING,
-            0,
-            start
-        ).x;
-
         Vector2 pos = {
-            .x = input_box.left + start_pos - input->scroll,
+            .x = input_box.left + text_width - input->scroll,
             .y = input_box.top - 1,
         };
-        Vector2 size = {
-            .x = selection_width,
-            .y = input->font_size + 2,
-        };
-        DrawRectangleV(pos, size, input->font_color);
+        DrawRectangleV(pos, get_cursor_size(input), input->font_color);
     }
 }
 
@@ -442,6 +452,16 @@ void handle_input(Input *input)
     handle_clipboard(input);
     handle_arrow_keys(input);
     update_cursor(input);
-    draw_input(input);
-    draw_cursor(input);
+
+    DrawRectangleV(input->pos, input->size, input->bg_color);
+
+    if(!input->cursor.is_collapsed) {
+        draw_selection(input);
+    }
+
+    draw_input_text(input);
+
+    if(input->cursor.is_collapsed) {
+        draw_cursor(input);
+    }
 }
