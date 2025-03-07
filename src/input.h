@@ -12,9 +12,15 @@ typedef struct {
 } Padding;
 
 typedef struct {
+  size_t start;
+  size_t end;
+} InputSelection;
+
+typedef struct {
     size_t pos;
-    Vector2 draw_pos;
     float blink_t;
+    InputSelection selection;
+    bool is_collapsed; // true when no text is selected
 } InputCursor;
 
 typedef struct {

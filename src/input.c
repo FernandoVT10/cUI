@@ -19,6 +19,7 @@ Input *create_input(InputProps props)
     input->padding = props.padding;
     input->border_color = props.border_color;
     input->bg_color = props.bg_color;
+    input->cursor.is_collapsed = true;
 
     return input;
 }
@@ -44,26 +45,27 @@ static Vector2 measure_string_slice(
     Font font,
     int font_size,
     int font_spacing,
-    size_t pos
+    size_t start,
+    size_t end
 )
 {
     Vector2 size;
 
-    if(pos == 0 || pos > str->count) {
+    if(end == 0 || end > str->count || start >= end) {
         return (Vector2) {0, 0};
     }
 
-    if(pos == str->count) {
+    if(end == str->count) {
         string_append_chr(str, '\0');
-        size = MeasureTextEx(font, str->items, font_size, font_spacing);
+        size = MeasureTextEx(font, str->items + start, font_size, font_spacing);
         str->count--;
     } else {
         // saves the char, replaces the char with the null terminator, measures the text,
         // and then replaces back the char
-        char c = str->items[pos];
-        str->items[pos] = '\0';
-        size = MeasureTextEx(font, str->items, font_size, font_spacing);
-        str->items[pos] = c;
+        char c = str->items[end];
+        str->items[end] = '\0';
+        size = MeasureTextEx(font, str->items + start, font_size, font_spacing);
+        str->items[end] = c;
     }
 
     return size;
@@ -206,6 +208,57 @@ static void handle_clipboard(Input *input)
     }
 }
 
+static void handle_arrow_keys(Input *input)
+{
+    // TODO: maybe it would be a better idea to have this if inside the handle_input function
+    if(!input->focused) return;
+
+    bool is_right_down = IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT);
+    bool is_left_down = IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT);
+
+    InputCursor *cursor = &input->cursor;
+
+    if(IsKeyDown(KEY_RIGHT_SHIFT) || IsKeyDown(KEY_LEFT_SHIFT)) {
+        if(is_right_down) {
+            if(cursor->is_collapsed && cursor->pos < input->text.count) {
+                cursor->is_collapsed = false;
+                cursor->selection.start = cursor->pos;
+                cursor->selection.end = cursor->pos + 1;
+            } else if(cursor->selection.end < input->text.count) {
+                cursor->selection.end++;
+            }
+        } else if(is_left_down) {
+            if(cursor->is_collapsed && cursor->pos > 0) {
+                cursor->is_collapsed = false;
+                cursor->selection.start = cursor->pos;
+                cursor->selection.end = cursor->pos - 1;
+            } else if(cursor->selection.end > 0) {
+                cursor->selection.end--;
+            }
+        }
+    } else {
+        if(is_right_down) {
+            if(cursor->is_collapsed && cursor->pos < input->text.count) {
+                set_cursor_pos(cursor, cursor->pos + 1);
+            } else if(!cursor->is_collapsed) {
+                InputSelection sel = cursor->selection;
+                size_t pos = sel.start > sel.end ? sel.start : sel.end;
+                cursor->is_collapsed = true;
+                set_cursor_pos(cursor, pos);
+            }
+        } else if(is_left_down) {
+            if(cursor->is_collapsed && cursor->pos > 0) {
+                set_cursor_pos(cursor, cursor->pos - 1);
+            } else if(!cursor->is_collapsed) {
+                InputSelection sel = cursor->selection;
+                size_t pos = sel.start > sel.end ? sel.end : sel.start;
+                cursor->is_collapsed = true;
+                set_cursor_pos(cursor, pos);
+            }
+        }
+    }
+}
+
 static void update_scroll(Input *input, float text_width)
 {
     float pos_x = text_width - input->scroll;
@@ -224,23 +277,11 @@ static void update_cursor(Input *input)
 {
     if(!input->focused) return;
 
-    if((IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) && input->cursor.pos < input->text.count) {
-        set_cursor_pos(&input->cursor, input->cursor.pos + 1);
-    } else if((IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) && input->cursor.pos > 0) {
-        set_cursor_pos(&input->cursor, input->cursor.pos - 1);
-    }
-
     Vector2 text_size = measure_string_slice(
-        &input->text, input->font, input->font_size, FONT_SPACING, input->cursor.pos
+        &input->text, input->font, input->font_size, FONT_SPACING, 0, input->cursor.pos
     );
 
     update_scroll(input, text_size.x);
-
-    InputBox input_box = get_input_visible_box(input);
-    input->cursor.draw_pos = (Vector2) {
-        .x = input_box.left + text_size.x - input->scroll,
-        .y = input_box.top - 1,
-    };
 }
 
 static Vector2 get_cursor_size(Input *input)
@@ -305,14 +346,67 @@ static void draw_cursor(Input *input)
     if(!input->focused) return;
 
     InputCursor *cursor = &input->cursor;
-    cursor->blink_t += GetFrameTime();
+    InputBox input_box = get_input_visible_box(input);
 
-    if(cursor->blink_t > CURSOR_BLINK_RATE * 2) {
-        cursor->blink_t = 0;
-    }
+    if(cursor->is_collapsed) {
+        cursor->blink_t += GetFrameTime();
 
-    if(cursor->blink_t < CURSOR_BLINK_RATE) {
-        DrawRectangleV(cursor->draw_pos, get_cursor_size(input), input->font_color);
+        if(cursor->blink_t > CURSOR_BLINK_RATE * 2) {
+            cursor->blink_t = 0;
+        }
+
+        if(cursor->blink_t < CURSOR_BLINK_RATE) {
+            float text_width = measure_string_slice(
+                &input->text,
+                input->font,
+                input->font_size,
+                FONT_SPACING,
+                0, input->cursor.pos
+            ).x;
+            Vector2 pos = {
+                .x = input_box.left + text_width - input->scroll,
+                .y = input_box.top - 1,
+            };
+            DrawRectangleV(pos, get_cursor_size(input), input->font_color);
+        }
+    } else {
+        size_t start, end;
+
+        if(cursor->selection.start > cursor->selection.end) {
+            start = cursor->selection.end;
+            end = cursor->selection.start;
+        } else {
+            start = cursor->selection.start;
+            end = cursor->selection.end;
+        }
+
+        float selection_width = measure_string_slice(
+            &input->text,
+            input->font,
+            input->font_size,
+            FONT_SPACING,
+            start,
+            end
+        ).x;
+
+        float start_pos = measure_string_slice(
+            &input->text,
+            input->font,
+            input->font_size,
+            FONT_SPACING,
+            0,
+            start
+        ).x;
+
+        Vector2 pos = {
+            .x = input_box.left + start_pos - input->scroll,
+            .y = input_box.top - 1,
+        };
+        Vector2 size = {
+            .x = selection_width,
+            .y = input->font_size + 2,
+        };
+        DrawRectangleV(pos, size, input->font_color);
     }
 }
 
@@ -321,6 +415,7 @@ void handle_input(Input *input)
     handle_mouse(input);
     handle_editing(input);
     handle_clipboard(input);
+    handle_arrow_keys(input);
     update_cursor(input);
     draw_input(input);
     draw_cursor(input);
