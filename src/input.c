@@ -95,6 +95,19 @@ static void set_cursor_pos(InputCursor *cursor, size_t pos)
     cursor->blink_t = 0;
 }
 
+static void set_cursor_selection(InputCursor *cursor, size_t start, size_t end)
+{
+    if(start != end) {
+        cursor->is_collapsed = false;
+        cursor->selection.start = start;
+        cursor->selection.end = end;
+    } else {
+        cursor->is_collapsed = true;
+        cursor->pos = start;
+        cursor->blink_t = 0;
+    }
+}
+
 static void handle_mouse(Input *input)
 {
     Vector2 mouse_pos = GetMousePosition();
@@ -129,6 +142,7 @@ static void handle_mouse(Input *input)
             chr_pos += MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
 
             if(chr_pos > mouse_pos.x - input_box.left) {
+                input->cursor.is_collapsed = true;
                 set_cursor_pos(&input->cursor, i);
                 break;
             }
@@ -139,6 +153,7 @@ static void handle_mouse(Input *input)
 
         // if the mouse position exceeds last char position, we set the cursor to the last position
         if(mouse_pos.x - input_box.left > chr_pos) {
+            input->cursor.is_collapsed = true;
             set_cursor_pos(&input->cursor, input->text.count);
         }
     }
@@ -246,19 +261,19 @@ static void handle_arrow_keys(Input *input)
     if(IsKeyDown(KEY_RIGHT_SHIFT) || IsKeyDown(KEY_LEFT_SHIFT)) {
         if(is_right_down) {
             if(cursor->is_collapsed && cursor->pos < input->text.count) {
-                cursor->is_collapsed = false;
-                cursor->selection.start = cursor->pos;
-                cursor->selection.end = cursor->pos + 1;
+                set_cursor_selection(cursor, cursor->pos, cursor->pos + 1);
             } else if(cursor->selection.end < input->text.count) {
-                cursor->selection.end++;
+                set_cursor_selection(
+                    cursor, cursor->selection.start, cursor->selection.end + 1
+                );
             }
         } else if(is_left_down) {
             if(cursor->is_collapsed && cursor->pos > 0) {
-                cursor->is_collapsed = false;
-                cursor->selection.start = cursor->pos;
-                cursor->selection.end = cursor->pos - 1;
+                set_cursor_selection(cursor, cursor->pos, cursor->pos - 1);
             } else if(cursor->selection.end > 0) {
-                cursor->selection.end--;
+                set_cursor_selection(
+                    cursor, cursor->selection.start, cursor->selection.end - 1
+                );
             }
         }
     } else {
