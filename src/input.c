@@ -149,19 +149,44 @@ static bool is_ctrl_down()
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 }
 
+static void remove_selected_text(Input *input)
+{
+    InputCursor *cursor = &input->cursor;
+    if(cursor->is_collapsed) return;
+
+    // TODO: this is reapeated code
+    size_t start, end;
+    if(cursor->selection.start > cursor->selection.end) {
+        start = cursor->selection.end;
+        end = cursor->selection.start;
+    } else {
+        start = cursor->selection.start;
+        end = cursor->selection.end;
+    }
+
+    string_remove_slice(&input->text, start, end);
+    cursor->is_collapsed = true;
+    set_cursor_pos(cursor, start);
+}
+
 static void handle_editing(Input *input)
 {
     if(!input->focused) return;
 
     int chr;
     while((chr = GetCharPressed()) != 0) {
+        if(!input->cursor.is_collapsed) {
+            remove_selected_text(input);
+        }
         string_insert_chr(&input->text, chr, input->cursor.pos);
         set_cursor_pos(&input->cursor, input->cursor.pos + 1);
     }
 
     bool is_backspace_active = IsKeyPressedRepeat(KEY_BACKSPACE) || IsKeyPressed(KEY_BACKSPACE);
 
-    if(is_ctrl_down() && is_backspace_active && input->cursor.pos > 0) {
+    if(!input->cursor.is_collapsed && is_backspace_active) {
+        remove_selected_text(input);
+    } else if(is_ctrl_down() && is_backspace_active && input->cursor.pos > 0) {
         char cur_chr = input->text.items[input->cursor.pos - 1];
 
         if(!isalnum(cur_chr)) {
