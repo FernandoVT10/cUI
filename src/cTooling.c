@@ -71,6 +71,18 @@ void string_remove_chr(String *str, size_t pos)
     str->count--;
 }
 
+void string_remove_slice(String *str, size_t start, size_t end)
+{
+    if(end > str->count) {
+        end = str->count;
+    }
+
+    if(start >= end) return;
+
+    memmove(str->items + start, str->items + end, str->count - end);
+    str->count -= end - start;
+}
+
 void string_free(String *str)
 {
     da_free(str);
