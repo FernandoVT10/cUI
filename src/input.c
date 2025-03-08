@@ -4,6 +4,7 @@
 
 #define FONT_SPACING 2
 #define CURSOR_BLINK_RATE 0.5 // time for the cursor to show and hide in seconds
+#define CURSOR_LINE_WIDTH 2
 
 Input *create_input(InputProps props)
 {
@@ -108,6 +109,33 @@ static void set_cursor_selection(InputCursor *cursor, size_t start, size_t end)
     }
 }
 
+static bool is_ctrl_down()
+{
+    return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+}
+
+// returns a vector where "x" contains the smaller value
+static Vector2 get_selection_as_vec(InputSelection selection)
+{
+    if(selection.start > selection.end) {
+        return (Vector2) {selection.end, selection.start};
+    } else {
+        return (Vector2) {selection.start, selection.end};
+    }
+}
+
+static void remove_selected_text(Input *input)
+{
+    InputCursor *cursor = &input->cursor;
+    if(cursor->is_collapsed) return;
+
+    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
+
+    string_remove_slice(&input->text, sel_vec.x, sel_vec.y);
+    cursor->is_collapsed = true;
+    set_cursor_pos(cursor, sel_vec.x);
+}
+
 static void handle_mouse(Input *input)
 {
     Vector2 mouse_pos = GetMousePosition();
@@ -159,33 +187,6 @@ static void handle_mouse(Input *input)
     }
 }
 
-static bool is_ctrl_down()
-{
-    return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-}
-
-// returns a vector where "x" contains the smaller value
-static Vector2 get_selection_as_vec(InputSelection selection)
-{
-    if(selection.start > selection.end) {
-        return (Vector2) {selection.end, selection.start};
-    } else {
-        return (Vector2) {selection.start, selection.end};
-    }
-}
-
-static void remove_selected_text(Input *input)
-{
-    InputCursor *cursor = &input->cursor;
-    if(cursor->is_collapsed) return;
-
-    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
-
-    string_remove_slice(&input->text, sel_vec.x, sel_vec.y);
-    cursor->is_collapsed = true;
-    set_cursor_pos(cursor, sel_vec.x);
-}
-
 static void handle_editing(Input *input)
 {
     int chr;
@@ -208,15 +209,16 @@ static void handle_editing(Input *input)
             string_remove_chr(&input->text, input->cursor.pos - 1);
             set_cursor_pos(&input->cursor, input->cursor.pos - 1);
         } else {
-            while(input->cursor.pos > 0 && isalnum(cur_chr)) {
-                // TODO: optimize this code to remove all the necessary characters at once
-                string_remove_chr(&input->text, input->cursor.pos - 1);
-                set_cursor_pos(&input->cursor, input->cursor.pos - 1);
-
-                if(input->cursor.pos > 0) {
-                    cur_chr = input->text.items[input->cursor.pos - 1];
+            size_t cur_pos = input->cursor.pos;
+            while(cur_pos > 0 && isalnum(cur_chr)) {
+                cur_pos--;
+                if(cur_pos > 0) {
+                    cur_chr = input->text.items[cur_pos - 1];
                 }
             }
+
+            string_remove_slice(&input->text, cur_pos, input->cursor.pos);
+            set_cursor_pos(&input->cursor, cur_pos);
         }
     } else if(input->cursor.pos > 0 && is_backspace_active) {
         string_remove_chr(&input->text, input->cursor.pos - 1);
@@ -276,8 +278,10 @@ static void handle_arrow_keys(Input *input)
     } else {
         if(is_right_down) {
             if(cursor->is_collapsed && cursor->pos < input->text.count) {
+                // moves cursor to the right
                 set_cursor_pos(cursor, cursor->pos + 1);
             } else if(!cursor->is_collapsed) {
+                // removes the selection and sets the cursor at the end of it
                 InputSelection sel = cursor->selection;
                 size_t pos = sel.start > sel.end ? sel.start : sel.end;
                 cursor->is_collapsed = true;
@@ -285,8 +289,10 @@ static void handle_arrow_keys(Input *input)
             }
         } else if(is_left_down) {
             if(cursor->is_collapsed && cursor->pos > 0) {
+                // moves the cursor to the left
                 set_cursor_pos(cursor, cursor->pos - 1);
             } else if(!cursor->is_collapsed) {
+                // removes the selection and sets the cursor at the start of it
                 InputSelection sel = cursor->selection;
                 size_t pos = sel.start > sel.end ? sel.end : sel.start;
                 cursor->is_collapsed = true;
@@ -312,14 +318,6 @@ static void update_scroll(Input *input)
         // NOTE: here the scroll variable is being substracted
         input->scroll += pos_x;
     }
-}
-
-static Vector2 get_cursor_size(Input *input)
-{
-    return (Vector2) {
-        .x = 2,
-        .y = input->font_size + 2,
-    };
 }
 
 static void draw_input_text(Input *input)
@@ -430,11 +428,16 @@ static void draw_cursor(Input *input)
             FONT_SPACING,
             0, input->cursor.pos
         ).x;
+
         Vector2 pos = {
             .x = input_box.left + text_width - input->scroll,
             .y = input_box.top - 1,
         };
-        DrawRectangleV(pos, get_cursor_size(input), input->font_color);
+        Vector2 size = {
+            .x = CURSOR_LINE_WIDTH,
+            .y = input->font_size + 2,
+        };
+        DrawRectangleV(pos, size, input->font_color);
     }
 }
 
