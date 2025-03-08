@@ -90,22 +90,54 @@ static InputBox get_input_visible_box(Input *input)
     };
 }
 
-static void set_cursor_pos(InputCursor *cursor, size_t pos)
+// updates the scroll if "pos" is not visible to make it visible
+// "pos" refers to the character position in the input
+static void update_scroll_to(Input *input, size_t pos)
 {
-    cursor->pos = pos;
-    cursor->blink_t = 0;
+    // after the cursor is change, we update the input scroll
+    float text_width = measure_string_slice(
+        &input->text, input->font, input->font_size, FONT_SPACING, 0, pos
+    ).x;
+
+    float pos_x = text_width - input->scroll;
+    InputBox input_box = get_input_visible_box(input);
+    float input_size = input_box.right - input_box.left;
+
+    if(pos_x > input_size) {
+        input->scroll += pos_x - input_size;
+    } else if(pos_x < 0) {
+        // NOTE: here the scroll variable is being substracted
+        input->scroll += pos_x;
+    }
 }
 
-static void set_cursor_selection(InputCursor *cursor, size_t start, size_t end)
+static void set_cursor_pos(Input *input, size_t pos)
 {
+    input->cursor.pos = pos;
+    input->cursor.blink_t = 0;
+
+    update_scroll_to(input, input->cursor.pos);
+}
+
+static void set_cursor_selection(Input *input, size_t start, size_t end)
+{
+    // if there's a difference in the start, we know that selection has grow to left
+    // then if that part is not visible to move the scroll to there, the same happends
+    // with the end
+    if(start != input->cursor.selection.start) {
+        update_scroll_to(input, start);
+    } else if (end != input->cursor.selection.end) {
+        update_scroll_to(input, end);
+    }
+
     if(start != end) {
-        cursor->is_collapsed = false;
-        cursor->selection.start = start;
-        cursor->selection.end = end;
+        input->cursor.is_collapsed = false;
+        input->cursor.selection.start = start;
+        input->cursor.selection.end = end;
     } else {
-        cursor->is_collapsed = true;
-        cursor->pos = start;
-        cursor->blink_t = 0;
+        input->cursor.is_collapsed = true;
+        input->cursor.pos = start;
+        input->cursor.blink_t = 0;
     }
 }
 
@@ -133,7 +165,7 @@ static void remove_selected_text(Input *input)
 
     string_remove_slice(&input->text, sel_vec.x, sel_vec.y);
     cursor->is_collapsed = true;
-    set_cursor_pos(cursor, sel_vec.x);
+    set_cursor_pos(input, sel_vec.x);
 }
 
 static void handle_mouse(Input *input)
@@ -171,7 +203,7 @@ static void handle_mouse(Input *input)
 
             if(chr_pos > mouse_pos.x - input_box.left) {
                 input->cursor.is_collapsed = true;
-                set_cursor_pos(&input->cursor, i);
+                set_cursor_pos(input, i);
                 break;
             }
 
@@ -182,7 +214,7 @@ static void handle_mouse(Input *input)
         // if the mouse position exceeds last char position, we set the cursor to the last position
         if(mouse_pos.x - input_box.left > chr_pos) {
             input->cursor.is_collapsed = true;
-            set_cursor_pos(&input->cursor, input->text.count);
+            set_cursor_pos(input, input->text.count);
         }
     }
 }
@@ -195,7 +227,7 @@ static void handle_editing(Input *input)
             remove_selected_text(input);
         }
         string_insert_chr(&input->text, chr, input->cursor.pos);
-        set_cursor_pos(&input->cursor, input->cursor.pos + 1);
+        set_cursor_pos(input, input->cursor.pos + 1);
     }
 
     bool is_backspace_active = IsKeyPressedRepeat(KEY_BACKSPACE) || IsKeyPressed(KEY_BACKSPACE);
@@ -207,7 +239,7 @@ static void handle_editing(Input *input)
 
         if(!isalnum(cur_chr)) {
             string_remove_chr(&input->text, input->cursor.pos - 1);
-            set_cursor_pos(&input->cursor, input->cursor.pos - 1);
+            set_cursor_pos(input, input->cursor.pos - 1);
         } else {
             size_t cur_pos = input->cursor.pos;
             while(cur_pos > 0 && isalnum(cur_chr)) {
@@ -218,11 +250,11 @@ static void handle_editing(Input *input)
             }
 
             string_remove_slice(&input->text, cur_pos, input->cursor.pos);
-            set_cursor_pos(&input->cursor, cur_pos);
+            set_cursor_pos(input, cur_pos);
         }
     } else if(input->cursor.pos > 0 && is_backspace_active) {
         string_remove_chr(&input->text, input->cursor.pos - 1);
-        set_cursor_pos(&input->cursor, input->cursor.pos - 1);
+        set_cursor_pos(input, input->cursor.pos - 1);
     }
 }
 
@@ -243,7 +275,7 @@ static void handle_clipboard(Input *input)
             }
 
             string_insert_text(&input->text, formatted_text, input->cursor.pos);
-            set_cursor_pos(&input->cursor, input->cursor.pos + strlen(formatted_text));
+            set_cursor_pos(input, input->cursor.pos + strlen(formatted_text));
 
             free(formatted_text);
         }
@@ -260,18 +292,18 @@ static void handle_arrow_keys(Input *input)
     if(IsKeyDown(KEY_RIGHT_SHIFT) || IsKeyDown(KEY_LEFT_SHIFT)) {
         if(is_right_down) {
             if(cursor->is_collapsed && cursor->pos < input->text.count) {
-                set_cursor_selection(cursor, cursor->pos, cursor->pos + 1);
+                set_cursor_selection(input, cursor->pos, cursor->pos + 1);
             } else if(cursor->selection.end < input->text.count) {
                 set_cursor_selection(
-                    cursor, cursor->selection.start, cursor->selection.end + 1
+                    input, cursor->selection.start, cursor->selection.end + 1
                 );
             }
         } else if(is_left_down) {
             if(cursor->is_collapsed && cursor->pos > 0) {
-                set_cursor_selection(cursor, cursor->pos, cursor->pos - 1);
+                set_cursor_selection(input, cursor->pos, cursor->pos - 1);
             } else if(cursor->selection.end > 0) {
                 set_cursor_selection(
-                    cursor, cursor->selection.start, cursor->selection.end - 1
+                    input, cursor->selection.start, cursor->selection.end - 1
                 );
             }
         }
@@ -279,44 +311,26 @@ static void handle_arrow_keys(Input *input)
         if(is_right_down) {
             if(cursor->is_collapsed && cursor->pos < input->text.count) {
                 // moves cursor to the right
-                set_cursor_pos(cursor, cursor->pos + 1);
+                set_cursor_pos(input, cursor->pos + 1);
             } else if(!cursor->is_collapsed) {
                 // removes the selection and sets the cursor at the end of it
                 InputSelection sel = cursor->selection;
                 size_t pos = sel.start > sel.end ? sel.start : sel.end;
                 cursor->is_collapsed = true;
-                set_cursor_pos(cursor, pos);
+                set_cursor_pos(input, pos);
             }
         } else if(is_left_down) {
             if(cursor->is_collapsed && cursor->pos > 0) {
                 // moves the cursor to the left
-                set_cursor_pos(cursor, cursor->pos - 1);
+                set_cursor_pos(input, cursor->pos - 1);
             } else if(!cursor->is_collapsed) {
                 // removes the selection and sets the cursor at the start of it
                 InputSelection sel = cursor->selection;
                 size_t pos = sel.start > sel.end ? sel.end : sel.start;
                 cursor->is_collapsed = true;
-                set_cursor_pos(cursor, pos);
+                set_cursor_pos(input, pos);
             }
         }
-    }
-}
-
-static void update_scroll(Input *input)
-{
-    float text_width = measure_string_slice(
-        &input->text, input->font, input->font_size, FONT_SPACING, 0, input->cursor.pos
-    ).x;
-
-    float pos_x = text_width - input->scroll;
-    InputBox input_box = get_input_visible_box(input);
-    float input_size = input_box.right - input_box.left;
-
-    if(pos_x > input_size) {
-        input->scroll += pos_x - input_size;
-    } else if(pos_x < 0) {
-        // NOTE: here the scroll variable is being substracted
-        input->scroll += pos_x;
     }
 }
 
@@ -406,7 +420,15 @@ static void draw_selection(Input *input)
         .x = selection_width,
         .y = input->font_size + 2,
     };
+
+    BeginScissorMode(
+        input_box.left,
+        input_box.top,
+        input_box.right - input_box.left,
+        input_box.bottom - input_box.top
+    );
     DrawRectangleV(pos, size, ColorAlpha(input->font_color, 0.4));
+    EndScissorMode();
 }
 
 static void draw_cursor(Input *input)
@@ -448,7 +470,6 @@ void handle_input(Input *input)
         handle_editing(input);
         handle_arrow_keys(input);
         handle_clipboard(input);
-        update_scroll(input);
     }
 
     DrawRectangleV(input->pos, input->size, input->bg_color);
