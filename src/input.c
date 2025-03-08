@@ -164,30 +164,30 @@ static bool is_ctrl_down()
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 }
 
+// returns a vector where "x" contains the smaller value
+static Vector2 get_selection_as_vec(InputSelection selection)
+{
+    if(selection.start > selection.end) {
+        return (Vector2) {selection.end, selection.start};
+    } else {
+        return (Vector2) {selection.start, selection.end};
+    }
+}
+
 static void remove_selected_text(Input *input)
 {
     InputCursor *cursor = &input->cursor;
     if(cursor->is_collapsed) return;
 
-    // TODO: this is reapeated code
-    size_t start, end;
-    if(cursor->selection.start > cursor->selection.end) {
-        start = cursor->selection.end;
-        end = cursor->selection.start;
-    } else {
-        start = cursor->selection.start;
-        end = cursor->selection.end;
-    }
+    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
 
-    string_remove_slice(&input->text, start, end);
+    string_remove_slice(&input->text, sel_vec.x, sel_vec.y);
     cursor->is_collapsed = true;
-    set_cursor_pos(cursor, start);
+    set_cursor_pos(cursor, sel_vec.x);
 }
 
 static void handle_editing(Input *input)
 {
-    if(!input->focused) return;
-
     int chr;
     while((chr = GetCharPressed()) != 0) {
         if(!input->cursor.is_collapsed) {
@@ -250,9 +250,6 @@ static void handle_clipboard(Input *input)
 
 static void handle_arrow_keys(Input *input)
 {
-    // TODO: maybe it would be a better idea to have this if inside the handle_input function
-    if(!input->focused) return;
-
     bool is_right_down = IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT);
     bool is_left_down = IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT);
 
@@ -299,8 +296,12 @@ static void handle_arrow_keys(Input *input)
     }
 }
 
-static void update_scroll(Input *input, float text_width)
+static void update_scroll(Input *input)
 {
+    float text_width = measure_string_slice(
+        &input->text, input->font, input->font_size, FONT_SPACING, 0, input->cursor.pos
+    ).x;
+
     float pos_x = text_width - input->scroll;
     InputBox input_box = get_input_visible_box(input);
     float input_size = input_box.right - input_box.left;
@@ -311,17 +312,6 @@ static void update_scroll(Input *input, float text_width)
         // NOTE: here the scroll variable is being substracted
         input->scroll += pos_x;
     }
-}
-
-static void update_cursor(Input *input)
-{
-    if(!input->focused) return;
-
-    Vector2 text_size = measure_string_slice(
-        &input->text, input->font, input->font_size, FONT_SPACING, 0, input->cursor.pos
-    );
-
-    update_scroll(input, text_size.x);
 }
 
 static Vector2 get_cursor_size(Input *input)
@@ -381,28 +371,18 @@ static void draw_input_text(Input *input)
 
 static void draw_selection(Input *input)
 {
-    if(!input->focused) return;
-
     InputCursor *cursor = &input->cursor;
     InputBox input_box = get_input_visible_box(input);
 
-    size_t start, end;
-
-    if(cursor->selection.start > cursor->selection.end) {
-        start = cursor->selection.end;
-        end = cursor->selection.start;
-    } else {
-        start = cursor->selection.start;
-        end = cursor->selection.end;
-    }
+    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
 
     float selection_width = measure_string_slice(
         &input->text,
         input->font,
         input->font_size,
         FONT_SPACING,
-        start,
-        end
+        sel_vec.x,
+        sel_vec.y
     ).x;
 
     float start_pos = measure_string_slice(
@@ -411,7 +391,7 @@ static void draw_selection(Input *input)
         input->font_size,
         FONT_SPACING,
         0,
-        start
+        sel_vec.x
     ).x;
 
     Vector2 pos = {
@@ -420,7 +400,7 @@ static void draw_selection(Input *input)
     };
 
     // We add a little offset if the selection doesn't start from the first char
-    if(start > 0) {
+    if(sel_vec.x > 0) {
         pos.x += FONT_SPACING;
     }
 
@@ -433,8 +413,6 @@ static void draw_selection(Input *input)
 
 static void draw_cursor(Input *input)
 {
-    if(!input->focused) return;
-
     InputCursor *cursor = &input->cursor;
     InputBox input_box = get_input_visible_box(input);
 
@@ -463,20 +441,22 @@ static void draw_cursor(Input *input)
 void handle_input(Input *input)
 {
     handle_mouse(input);
-    handle_editing(input);
-    handle_clipboard(input);
-    handle_arrow_keys(input);
-    update_cursor(input);
+    if(input->focused) {
+        handle_editing(input);
+        handle_arrow_keys(input);
+        handle_clipboard(input);
+        update_scroll(input);
+    }
 
     DrawRectangleV(input->pos, input->size, input->bg_color);
 
-    if(!input->cursor.is_collapsed) {
+    if(!input->cursor.is_collapsed && input->focused) {
         draw_selection(input);
     }
 
     draw_input_text(input);
 
-    if(input->cursor.is_collapsed) {
+    if(input->cursor.is_collapsed && input->focused) {
         draw_cursor(input);
     }
 }
