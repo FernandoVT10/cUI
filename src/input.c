@@ -115,6 +115,7 @@ static void set_cursor_pos(Input *input, size_t pos)
 {
     input->cursor.pos = pos;
     input->cursor.blink_t = 0;
+    input->cursor.is_collapsed = true;
 
     update_scroll_to(input, input->cursor.pos);
 }
@@ -168,8 +169,42 @@ static void remove_selected_text(Input *input)
     set_cursor_pos(input, sel.start);
 }
 
+static size_t get_cursor_pos_pointed_by_mouse(Input *input)
+{
+    Vector2 mouse_pos = GetMousePosition();
+    InputBox input_box = get_input_visible_box(input);
+
+    // helper string for measuring the letters with raylib
+    char s[2];
+    s[1] = '\0';
+    float chr_pos = 0;
+
+    for(size_t i = 0; i < input->text.count; i++) {
+        s[0] = input->text.items[i];
+
+        float chr_size = MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
+
+        // this division makes the click feel right. If you click the left part of a letter
+        // the cursor goes to the left of the letter. The same happens if you click the right part
+        if(chr_pos + chr_size / 1.5 > mouse_pos.x - input_box.left) {
+            return i;
+            break;
+        }
+
+        chr_pos += chr_size;
+
+        // between characters an additional width (font spacing) is added
+        if(i > 0) chr_pos += FONT_SPACING;
+    }
+
+    // if the mouse position exceeds last char position, we set the cursor to the last position
+    return input->text.count;
+}
+
 static void handle_mouse(Input *input)
 {
+    static size_t initial_pos;
+
     Vector2 mouse_pos = GetMousePosition();
     Rectangle input_rect =  {
         input->pos.x, input->pos.y,
@@ -186,35 +221,22 @@ static void handle_mouse(Input *input)
     }
 
     InputBox input_box = get_input_visible_box(input);
-
-    if(input->hovered
-        && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)
-        && (mouse_pos.y > input_box.top && mouse_pos.y < input_box.top + input->font_size)) {
-
-        // helper string for measuring the letters with raylib
-        char s[2];
-        s[1] = '\0';
-        float chr_pos = 0;
-
-        for(size_t i = 0; i < input->text.count; i++) {
-            s[0] = input->text.items[i];
-
-            chr_pos += MeasureTextEx(input->font, s, input->font_size, FONT_SPACING).x;
-
-            if(chr_pos > mouse_pos.x - input_box.left) {
-                input->cursor.is_collapsed = true;
-                set_cursor_pos(input, i);
-                break;
-            }
-
-            // between characters an additional width (font spacing) is added
-            if(i > 0) chr_pos += FONT_SPACING;
+    if(mouse_pos.y > input_box.top && mouse_pos.y < input_box.top + input->font_size) {
+        if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            initial_pos = get_cursor_pos_pointed_by_mouse(input);
         }
 
-        // if the mouse position exceeds last char position, we set the cursor to the last position
-        if(mouse_pos.x - input_box.left > chr_pos) {
-            input->cursor.is_collapsed = true;
-            set_cursor_pos(input, input->text.count);
+        if(IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            size_t final_pos = get_cursor_pos_pointed_by_mouse(input);
+
+            if(input->cursor.selection.end != final_pos) {
+                set_cursor_selection(input, initial_pos, final_pos);
+            }
+        }
+
+        if(IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            size_t final_pos = get_cursor_pos_pointed_by_mouse(input);
+            set_cursor_selection(input, initial_pos, final_pos);
         }
     }
 }
