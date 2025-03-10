@@ -146,13 +146,13 @@ static bool is_ctrl_down()
     return IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
 }
 
-// returns a vector where "x" contains the smaller value
-static Vector2 get_selection_as_vec(InputSelection selection)
+// returns a selection where the start is always smaller than the end
+static InputSelection get_corrected_selection(InputSelection selection)
 {
     if(selection.start > selection.end) {
-        return (Vector2) {selection.end, selection.start};
+        return (InputSelection) {selection.end, selection.start};
     } else {
-        return (Vector2) {selection.start, selection.end};
+        return (InputSelection) {selection.start, selection.end};
     }
 }
 
@@ -161,11 +161,11 @@ static void remove_selected_text(Input *input)
     InputCursor *cursor = &input->cursor;
     if(cursor->is_collapsed) return;
 
-    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
+    InputSelection sel = get_corrected_selection(cursor->selection);
 
-    string_remove_slice(&input->text, sel_vec.x, sel_vec.y);
+    string_remove_slice(&input->text, sel.start, sel.end);
     cursor->is_collapsed = true;
-    set_cursor_pos(input, sel_vec.x);
+    set_cursor_pos(input, sel.start);
 }
 
 static void handle_mouse(Input *input)
@@ -258,9 +258,27 @@ static void handle_editing(Input *input)
     }
 }
 
+static void copy_selected_text_to_clipboard(Input *input)
+{
+    InputSelection selection = get_corrected_selection(input->cursor.selection);
+    size_t selection_len = selection.end - selection.start;
+    char *slice = malloc(selection_len + 1);
+
+    size_t j = 0;
+    for(size_t i = selection.start; i < selection.end; i++) {
+        slice[j++] = input->text.items[i];
+    }
+
+    slice[j] = '\0';
+
+    SetClipboardText(slice);
+}
+
 static void handle_clipboard(Input *input)
 {
-    if(is_ctrl_down() && IsKeyPressed(KEY_V)) {
+    bool ctrl = is_ctrl_down();
+    if(ctrl && IsKeyPressed(KEY_V)) {
+        // PASTE
         const char *raw = GetClipboardText();
 
         if(strlen(raw) > 0) {
@@ -279,6 +297,15 @@ static void handle_clipboard(Input *input)
 
             free(formatted_text);
         }
+    } else if(ctrl && IsKeyPressed(KEY_C) && !input->cursor.is_collapsed) {
+        copy_selected_text_to_clipboard(input);
+    } else if(ctrl && IsKeyPressed(KEY_X) && !input->cursor.is_collapsed) {
+        // CUT
+        copy_selected_text_to_clipboard(input);
+        remove_selected_text(input);
+    } else if(ctrl && IsKeyPressed(KEY_A)) {
+        // SELECT ALL
+        set_cursor_selection(input, 0, input->text.count);
     }
 }
 
@@ -386,15 +413,15 @@ static void draw_selection(Input *input)
     InputCursor *cursor = &input->cursor;
     InputBox input_box = get_input_visible_box(input);
 
-    Vector2 sel_vec = get_selection_as_vec(cursor->selection);
+    InputSelection selection = get_corrected_selection(cursor->selection);
 
     float selection_width = measure_string_slice(
         &input->text,
         input->font,
         input->font_size,
         FONT_SPACING,
-        sel_vec.x,
-        sel_vec.y
+        selection.start,
+        selection.end
     ).x;
 
     float start_pos = measure_string_slice(
@@ -403,7 +430,7 @@ static void draw_selection(Input *input)
         input->font_size,
         FONT_SPACING,
         0,
-        sel_vec.x
+        selection.start
     ).x;
 
     Vector2 pos = {
@@ -412,7 +439,7 @@ static void draw_selection(Input *input)
     };
 
     // We add a little offset if the selection doesn't start from the first char
-    if(sel_vec.x > 0) {
+    if(selection.start > 0) {
         pos.x += FONT_SPACING;
     }
 
